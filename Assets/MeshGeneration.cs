@@ -1,119 +1,118 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
+[RequireComponent(typeof(MeshFilter))]
 public class MeshGeneration : MonoBehaviour
 {
     Mesh _mesh;
     
     [Header("Mesh Settings")]
-    public Vector3[] _vertices; // Vertices of the mesh
-    public int[] _triangles; // Triangles of the mesh
-    public Vector2[] _uvs; // UVs of the mesh
-    public Vector3[] _normals; // Normals of the mesh
+    private Vector3[] _vertices; // mesh vertices
+    private int[] _triangles; // mesh triangles
+    private Vector2[] _uvs; // mesh uv
+    private Vector3[] _normals; // mesh normals
+
+    [Header("Mesh Generation Settings")]
+    [Range(1,100)]public int width; // x
+    [Range(1,100)]public int length; // z
+    [Range(1,10)]public float scale; // noise scale
+    [Range(1,5)] public float heightMultiplier; // height multiplier
+    [Range(1,2)]public int octaves; // noise octaves
+    [Range(1,2)]public float persistence; // noise persistence
+    [Range(1,2)]public float lacunarity; // noise lacunarity
     
-    [Header("Mesh Generation Settings")] 
-    public int width; // Width of the mesh
-    public int height; // Height of the mesh
-    public float scale; // Scale of the mesh
-    
-    // Start is called before the first frame update
     void Start()
     {
         GenerateMesh();
     }
-
-    // Update is called once per frame
-    void Update()
+    
+    private void Update()
     {
         if (Input.GetKeyDown(KeyCode.Space))
         {
             GenerateMesh();
         }
     }
-    
-    private void GenerateMesh()
+
+    void GenerateMesh()
     {
         _mesh = new Mesh();
         GetComponent<MeshFilter>().mesh = _mesh;
-        
-        _vertices = new Vector3[(width + 1) * (height + 1)]; // Vertices of the mesh
-        _triangles = new int[width * height * 6]; // Triangles of the mesh
-        _uvs = new Vector2[_vertices.Length]; // UVs of the mesh
-        _normals = new Vector3[_vertices.Length]; // Normals of the mesh
-        
-        for (int i = 0, y = 0; y <= height; y++) // Generate the vertices
+
+        _vertices = new Vector3[(width + 1) * (length + 1)]; 
+        _triangles = new int[width * length * 6]; 
+        _uvs = new Vector2[_vertices.Length];
+        _normals = new Vector3[_vertices.Length];
+
+        System.Random prng = new System.Random();
+        Vector2[] octaveOffsets = new Vector2[octaves];
+
+        for (int i = 0; i < octaves; i++) // generate random offsets for each octave
         {
-            for (int x = 0; x <= width; x++, i++) // Generate the vertices
+            float offsetX = prng.Next(-100000, 100000); 
+            float offsetY = prng.Next(-100000, 100000); 
+            octaveOffsets[i] = new Vector2(offsetX, offsetY);
+        }
+
+        if (scale <= 0) // prevent division by zero
+        {
+            scale = 0.0001f; 
+        }
+
+        for (int i = 0, y = 0; y <= length; y++) // generate vertices
+        {
+            for (int x = 0; x <= width; x++, i++)  // generate vertices
             {
-                float xCoord = (float)x / width * scale; // Calculate the x coordinate
-                float yCoord = (float)y / height * scale; // Calculate the y coordinate
-                
-                float z = Mathf.PerlinNoise(xCoord, yCoord); // Calculate the z coordinate
-                
-                _vertices[i] = new Vector3(x, z, y); // Set the vertex position
-                _uvs[i] = new Vector2((float)x / width, (float)y / height); // Set the UVs
-                _normals[i] = Vector3.up; // Set the normals
+                float amplitude = 1; // amplitude of the noise
+                float frequency = 1; // frequency of the noise
+                float noiseHeight = 0; // height of the noise
+
+                for (int j = 0; j < octaves; j++) // generate noise
+                {
+                    float sampleX = x / scale * frequency + octaveOffsets[j].x; // sample noise
+                    float sampleY = y / scale * frequency + octaveOffsets[j].y; // sample noise
+
+                    float perlinValue = Mathf.PerlinNoise(sampleX, sampleY) * 2 - 1; // generate perlin noise
+                    noiseHeight += perlinValue * amplitude; // add noise to height
+
+                    amplitude *= persistence; 
+                    frequency *= lacunarity;
+                }
+
+                float height = noiseHeight * heightMultiplier; // multiply noise height by height multiplier
+                _vertices[i] = new Vector3(x, height, y); // set vertex position
+                _uvs[i] = new Vector2((float)x / width, (float)y / length); // set uv
+                _normals[i] = Vector3.up; // set normal
             }
         }
-        
-        for (int ti = 0, vi = 0, y = 0; y < height; y++, vi++) // Generate the triangles
+
+        for (int ti = 0, vi = 0, y = 0; y < length; y++, vi++) // generate triangles
         {
-            for (int x = 0; x < width; x++, ti += 6, vi++) // Generate the triangles
+            for (int x = 0; x < width; x++, ti += 6, vi++)
             {
-                _triangles[ti] = vi; // Set the triangles
-                _triangles[ti + 3] = _triangles[ti + 2] = vi + 1; // Set the triangles
-                _triangles[ti + 4] = _triangles[ti + 1] = vi + width + 1; // Set the triangles
-                _triangles[ti + 5] = vi + width + 2; // Set the triangles
-                
-                //yield return new WaitForSeconds(0.1f);
+                _triangles[ti] = vi;
+                _triangles[ti + 3] = _triangles[ti + 2] = vi + 1;
+                _triangles[ti + 4] = _triangles[ti + 1] = vi + width + 1;
+                _triangles[ti + 5] = vi + width + 2;
             }
         }
-        
-        _mesh.vertices = _vertices; // Set the vertices
-        _mesh.triangles = _triangles; // Set the triangles
-        _mesh.uv = _uvs; // Set the UVs
-        _mesh.normals = _normals; // Set the normals
-        
-        /* NOTE: The following code is not necessary for this example, looking at the methods that you could use.
-        _mesh.RecalculateNormals();
-        _mesh.RecalculateBounds();
-        _mesh.Optimize();
-        _mesh.UploadMeshData(false);
-        _mesh.SetColors(new Color[_vertices.Length]);
-        */
+
+        _mesh.vertices = _vertices;
+        _mesh.triangles = _triangles;
+        _mesh.uv = _uvs;
+        _mesh.normals = _normals;
     }
     
-    private void OnDrawGizmos()
+    private void OnDrawGizmos() // draw vertices in editor
     {
         if (_vertices == null)
         {
             return;
         }
-        
-        for (int i = 0; i < _vertices.Length; i++)
+
+        foreach (var t in _vertices)
         {
-            Gizmos.DrawSphere(_vertices[i], 0.1f);
+            Gizmos.DrawSphere(t, 0.1f);
         }
-    }
-    
-    private void OnDrawGizmosSelected()
-    {
-        if (_vertices == null)
-        {
-            return;
-        }
-        
-        for (int i = 0; i < _vertices.Length; i++)
-        {
-            Gizmos.DrawSphere(_vertices[i], 0.1f);
-        }
-    }
-    
-    private void OnValidate() // Called when the script is loaded or a value is changed in the inspector
-    {
-        GenerateMesh();
-        // Pretty good for generating the mesh in the editor
     }
 }
